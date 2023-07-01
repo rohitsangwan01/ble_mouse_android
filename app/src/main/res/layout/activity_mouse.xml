@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_mouse"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MouseActivity">
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:text="Pair this device with another Bluetooth LE host. Then tap or drag this device's screen.\nTap with two fingers will be right click." />
+</RelativeLayout>
