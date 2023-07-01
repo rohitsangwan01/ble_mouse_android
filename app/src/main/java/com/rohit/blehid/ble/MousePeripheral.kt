@@ -1,9 +1,21 @@
 package com.rohit.blehid.ble
 
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 
-class MousePeripheral(context: Context) :
-    HidPeripheral(context.applicationContext, true, false, false, 10) {
+class MousePeripheral(
+    context: Context,
+    onAdvertiseStateChange: ((isAdvertising: Boolean) -> Unit)? = null,
+    onConnectionStateChanged: ((device: BluetoothDevice, status: Int, newState: Int) -> Unit)? = null
+) : HidPeripheral(
+    context.applicationContext,
+    true,
+    false,
+    false,
+    10,
+    onAdvertiseStateChange,
+    onConnectionStateChanged
+) {
 
     private val lastSent = ByteArray(4)
 
@@ -92,6 +104,7 @@ class MousePeripheral(context: Context) :
     override fun onOutputReport(outputReport: ByteArray?) {
         // do nothing
     }
+
     private fun input(size: Int): Byte = (0x80 or size).toByte()
     private fun collection(size: Int): Byte = (0xA0 or size).toByte()
     private fun endCollection(size: Int): Byte = (0xC0 or size).toByte()
@@ -103,14 +116,4 @@ class MousePeripheral(context: Context) :
     private fun usage(size: Int): Byte = (0x08 or size).toByte()
     private fun usageMinimum(size: Int): Byte = (0x18 or size).toByte()
     private fun usageMaximum(size: Int): Byte = (0x28 or size).toByte()
-//        fun reportId(size: Int): Byte = (0x84 or size).toByte()
-//        fun lsb(value: Int): Byte = (value and 0xff).toByte()
-//        fun msb(value: Int): Byte = (value shr 8 and 0xff).toByte()
-//        fun physicalMinimum(size: Int): Byte = (0x34 or size).toByte()
-//        fun physicalMaximum(size: Int): Byte = (0x44 or size).toByte()
-//        fun unitExponent(size: Int): Byte = (0x54 or size).toByte()
-//        fun feature(size: Int): Byte = (0xB0 or size).toByte()
-//        fun output(size: Int): Byte = (0x90 or size).toByte()
-//        fun unit(size: Int): Byte = (0x64 or size).toByte()
-
 }

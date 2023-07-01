@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -39,7 +40,12 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        findViewById<View>(R.id.btnPermission).setOnClickListener { initialize() }
+        findViewById<View>(R.id.btnPermission).setOnClickListener {
+            val result = initialize()
+            if (result) {
+                Toast.makeText(this, "Al Set", Toast.LENGTH_SHORT).show()
+            }
+        }
 
     }
 
@@ -91,9 +97,24 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        //  Log.e("Test", "onRequestPermissionsResult $requestCode ${permissions.contentToString()} ${grantResults.contentToString()}")
         permissions.forEachIndexed { index, s ->
             Log.e("Test", "onRequestPermissionsResult $s ${grantResults[index]}")
+        }
+        if (requestCode == BleUtils.REQUEST_CODE_BLUETOOTH_ENABLE) {
+            if (!BleUtils.isBluetoothEnabled(this)) {
+                Toast.makeText(this, "requires_bl_enabled", Toast.LENGTH_LONG).show()
+                return
+            }
+            if (!BleUtils.isBleSupported(this) || !BleUtils.isBlePeripheralSupported(this)) {
+                val alertDialog = AlertDialog.Builder(this).create()
+                alertDialog.setTitle("not_supported")
+                alertDialog.setMessage("Ble not supported")
+                alertDialog.setButton(
+                    AlertDialog.BUTTON_NEUTRAL, "ok"
+                ) { dialog, _ -> dialog.dismiss() }
+                alertDialog.setOnDismissListener { finish() }
+                alertDialog.show()
+            }
         }
     }
 

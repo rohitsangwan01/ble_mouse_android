@@ -1,15 +1,14 @@
 package com.rohit.blehid
 
-import android.content.Intent
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.os.Bundle
 import android.view.MotionEvent
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.rohit.blehid.ble.BleUtils
 import com.rohit.blehid.ble.MousePeripheral
 
-
+@SuppressLint("SetTextI18n")
 class MouseActivity : AppCompatActivity() {
     private var mouse: MousePeripheral? = null
     private var X = 0f
@@ -17,12 +16,28 @@ class MouseActivity : AppCompatActivity() {
     private var firstX = 0f
     private var firstY = 0f
     private var maxPointerCount = 0
+    private lateinit var txtUpdate: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_mouse)
         title = "Mouse"
+        txtUpdate = findViewById(R.id.txtUpdate)
 
-        setupBlePeripheralProvider()
+        mouse = MousePeripheral(
+            this,
+            onConnectionStateChanged = { device: BluetoothDevice, status: Int, newState: Int ->
+                txtUpdate.text =
+                    "${txtUpdate.text}\nConnection state changed: ${device.address} $status -> $newState"
+            },
+            onAdvertiseStateChange = { isAdvertising: Boolean ->
+                txtUpdate.text = "${txtUpdate.text}\nAdvertise state changed: $isAdvertising"
+            }
+
+        )
+
+        mouse?.setDeviceName("Ble Mouse")
+        mouse?.startAdvertising()
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
@@ -125,12 +140,6 @@ class MouseActivity : AppCompatActivity() {
         return false
     }
 
-    private fun setupBlePeripheralProvider() {
-        mouse = MousePeripheral(this)
-        mouse?.setDeviceName("Ble Mouse")
-        mouse?.startAdvertising()
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         if (mouse != null) {
@@ -138,25 +147,4 @@ class MouseActivity : AppCompatActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == BleUtils.REQUEST_CODE_BLUETOOTH_ENABLE) {
-            if (!BleUtils.isBluetoothEnabled(this)) {
-                Toast.makeText(this, "requires_bl_enabled", Toast.LENGTH_LONG).show()
-                return
-            }
-            if (!BleUtils.isBleSupported(this) || !BleUtils.isBlePeripheralSupported(this)) {
-                val alertDialog = AlertDialog.Builder(this).create()
-                alertDialog.setTitle("not_supported")
-                alertDialog.setMessage("Ble not supported")
-                alertDialog.setButton(
-                    AlertDialog.BUTTON_NEUTRAL, "ok"
-                ) { dialog, _ -> dialog.dismiss() }
-                alertDialog.setOnDismissListener { finish() }
-                alertDialog.show()
-            } else {
-                setupBlePeripheralProvider()
-            }
-        }
-    }
 }

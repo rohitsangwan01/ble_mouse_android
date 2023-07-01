@@ -38,7 +38,9 @@ abstract class HidPeripheral protected constructor(
     needInputReport: Boolean,
     needOutputReport: Boolean,
     needFeatureReport: Boolean,
-    dataSendingRate: Int
+    dataSendingRate: Int,
+    onAdvertiseStateChange: ((isAdvertising: Boolean) -> Unit)? = null,
+    private val onConnectionStateChanged: ((device: BluetoothDevice, status: Int, newState: Int) -> Unit)? = null
 ) {
     private var manufacturer = "rohit_s"
     private var deviceName = "BLE HID"
@@ -118,7 +120,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -131,7 +133,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -144,7 +146,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -168,7 +170,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(reportReferenceDescriptor)
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
             inputReportCharacteristic = characteristic
@@ -187,7 +189,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(descriptor)
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -204,7 +206,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(descriptor)
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -273,24 +275,18 @@ abstract class HidPeripheral protected constructor(
 
 
     private fun onConnectionUpdate(device: BluetoothDevice, status: Int, newState: Int) {
-        Log.d(TAG, "connectionStateCallback: $device, $status, $newState")
+        onConnectionStateChanged?.invoke(device, status, newState)
     }
 
     private val advertiseCallback: AdvertiseCallback = object : AdvertiseCallback() {
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
-            Log.d(
-                TAG,
-                "onStartFailure errorCode: $errorCode"
-            )
+            onAdvertiseStateChange?.invoke(false)
         }
 
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
             super.onStartSuccess(settingsInEffect)
-            Log.d(
-                TAG,
-                "onStartSuccess settingsInEffect: $settingsInEffect"
-            )
+            onAdvertiseStateChange?.invoke(true)
         }
     }
 
@@ -760,7 +756,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -770,7 +766,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -780,7 +776,7 @@ abstract class HidPeripheral protected constructor(
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic)){
+            while (!service.addCharacteristic(characteristic)) {
                 Log.e(TAG, "Adding Char: ${characteristic.uuid}")
             }
         }
@@ -804,7 +800,7 @@ abstract class HidPeripheral protected constructor(
         clientCharacteristicConfigurationDescriptor.value =
             BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         characteristic.addDescriptor(clientCharacteristicConfigurationDescriptor)
-        while (!service.addCharacteristic(characteristic)){
+        while (!service.addCharacteristic(characteristic)) {
             Log.e(TAG, "Adding Char: ${characteristic.uuid}")
         }
         return service
