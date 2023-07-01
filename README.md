@@ -17,8 +17,10 @@ BLE Keyboard
 ## Tested connection:
 
 Android(Peripheral) <--> Android(Central)
+
 Android(Peripheral) <--> OS X(Central)
+
 Android(Peripheral) <--> IOS(Central)
 
 ## Note
-Thanks to [BLE-HID-Peripheral-for-Android](https://github.com/kshoji/BLE-HID-Peripheral-for-Android) for java implementation and motivation 
+Thanks to [BLE-HID-Peripheral-for-Android](https://github.com/kshoji/BLE-HID-Peripheral-for-Android) for java implementation ( original source )
