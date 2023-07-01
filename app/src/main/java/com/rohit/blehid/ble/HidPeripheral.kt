@@ -29,7 +29,8 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.function.Consumer
+
+private val TAG = HidPeripheral::class.java.simpleName
 
 @SuppressLint("MissingPermission")
 abstract class HidPeripheral protected constructor(
@@ -39,20 +40,36 @@ abstract class HidPeripheral protected constructor(
     needFeatureReport: Boolean,
     dataSendingRate: Int
 ) {
-    private var manufacturer = "kshoji.jp"
+    private var manufacturer = "rohit_s"
     private var deviceName = "BLE HID"
     private var serialNumber = "12345678"
     protected abstract val reportMap: ByteArray
     protected abstract fun onOutputReport(outputReport: ByteArray?)
     private lateinit var applicationContext: Context
     private lateinit var handler: Handler
-
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var inputReportCharacteristic: BluetoothGattCharacteristic? = null
     private var gattServer: BluetoothGattServer? = null
     private val bluetoothDevicesMap: MutableMap<String, BluetoothDevice> = HashMap()
     private val servicesToAdd: Queue<BluetoothGattService?> = LinkedBlockingQueue()
     private val inputReportQueue: Queue<ByteArray> = ConcurrentLinkedQueue()
+    private val deviceInfoMaxLength = 20
+    private val emptyBytes = byteArrayOf()
+    private val responseHidInformation = byteArrayOf(0x11, 0x01, 0x00, 0x03)
+    private val serviceDeviceInfo = BleUtils.fromShortValue(0x180A)
+    private val characteristicManufacturerName = BleUtils.fromShortValue(0x2A29)
+    private val characteristicModelNumber = BleUtils.fromShortValue(0x2A24)
+    private val characteristicSerialNumber = BleUtils.fromShortValue(0x2A25)
+    private val serviceBattery = BleUtils.fromShortValue(0x180F)
+    private val characteristicBatteryLevel = BleUtils.fromShortValue(0x2A19)
+    private val serviceBleHid = BleUtils.fromShortValue(0x1812)
+    private val characteristicHidInformation = BleUtils.fromShortValue(0x2A4A)
+    private val characteristicReportMap = BleUtils.fromShortValue(0x2A4B)
+    private val characteristicHidControlPoint = BleUtils.fromShortValue(0x2A4C)
+    private val characteristicReport = BleUtils.fromShortValue(0x2A4D)
+    private val characteristicProtocolMode = BleUtils.fromShortValue(0x2A4E)
+    private val descriptorReportReference = BleUtils.fromShortValue(0x2908)
+    private val descriptorClientCharacteristicConfig = BleUtils.fromShortValue(0x2902)
 
     protected fun addInputReport(inputReport: ByteArray?) {
         if (inputReport != null && inputReport.isNotEmpty()) {
@@ -60,16 +77,6 @@ abstract class HidPeripheral protected constructor(
         }
     }
 
-
-    inner class ConnectionState(var device: BluetoothDevice, var status: Int, var newState: Int)
-
-    fun setConnectionStateCallback(connectionStateCallback: Consumer<ConnectionState>) {
-        this.connectionStateCallback = connectionStateCallback
-    }
-
-    private var connectionStateCallback: Consumer<ConnectionState> = Consumer {
-        // do nothing
-    }
 
     private fun addService(service: BluetoothGattService?) {
         assert(gattServer != null)
@@ -90,102 +97,116 @@ abstract class HidPeripheral protected constructor(
         isNeedFeatureReport: Boolean
     ): BluetoothGattService {
         val service =
-            BluetoothGattService(SERVICE_BLE_HID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            BluetoothGattService(serviceBleHid, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
         // HID Information
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_HID_INFORMATION,
+                characteristicHidInformation,
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)) {
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
 
         // Report Map
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_REPORT_MAP,
+                characteristicReportMap,
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
 
         // Protocol Mode
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_PROTOCOL_MODE,
+                characteristicProtocolMode,
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
 
         // HID Control Point
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_HID_CONTROL_POINT,
+                characteristicHidControlPoint,
                 BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
                 BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
 
         // Input Report
         if (isNeedInputReport) {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_REPORT,
+                characteristicReport,
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             val clientCharacteristicConfigurationDescriptor = BluetoothGattDescriptor(
-                DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
+                descriptorClientCharacteristicConfig,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             ) //  | BluetoothGattDescriptor.PERMISSION_WRITE
             clientCharacteristicConfigurationDescriptor.value =
                 BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             characteristic.addDescriptor(clientCharacteristicConfigurationDescriptor)
             val reportReferenceDescriptor = BluetoothGattDescriptor(
-                DESCRIPTOR_REPORT_REFERENCE,
+                descriptorReportReference,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(reportReferenceDescriptor)
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
             inputReportCharacteristic = characteristic
         }
 
         // Output Report
         if (isNeedOutputReport) {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_REPORT,
+                characteristicReport,
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             val descriptor = BluetoothGattDescriptor(
-                DESCRIPTOR_REPORT_REFERENCE,
+                descriptorReportReference,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(descriptor)
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
 
         // Feature Report
         if (isNeedFeatureReport) {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_REPORT,
+                characteristicReport,
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED or BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED
             )
             val descriptor = BluetoothGattDescriptor(
-                DESCRIPTOR_REPORT_REFERENCE,
+                descriptorReportReference,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
             characteristic.addDescriptor(descriptor)
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
         return service
     }
@@ -198,26 +219,20 @@ abstract class HidPeripheral protected constructor(
                 .setTimeout(0)
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .build()
-
             // set up advertising data
             val advertiseData = AdvertiseData.Builder()
                 .setIncludeTxPowerLevel(false)
                 .setIncludeDeviceName(true)
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_DEVICE_INFORMATION.toString()))
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_BLE_HID.toString()))
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_BATTERY.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceDeviceInfo.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceBleHid.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceBattery.toString()))
                 .build()
-
             // set up scan result
             val scanResult = AdvertiseData.Builder()
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_DEVICE_INFORMATION.toString()))
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_BLE_HID.toString()))
-                .addServiceUuid(ParcelUuid.fromString(SERVICE_BATTERY.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceDeviceInfo.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceBleHid.toString()))
+                .addServiceUuid(ParcelUuid.fromString(serviceBattery.toString()))
                 .build()
-            Log.d(
-                TAG,
-                "advertiseData: $advertiseData, scanResult: $scanResult"
-            )
             bluetoothLeAdvertiser!!.startAdvertising(
                 advertiseSettings,
                 advertiseData,
@@ -228,32 +243,26 @@ abstract class HidPeripheral protected constructor(
     }
 
     fun stopAdvertising() {
-        handler.post(object : Runnable {
-            override fun run() {
-                try {
-                    bluetoothLeAdvertiser!!.stopAdvertising(advertiseCallback)
-                } catch (ignored: IllegalStateException) {
-                    // BT Adapter is not turned ON
-                }
-                try {
-                    if (gattServer != null) {
-                        val devices: Set<BluetoothDevice> = devices
-                        for (device in devices) {
-                            gattServer!!.cancelConnection(device)
-                        }
-                        gattServer!!.close()
-                        gattServer = null
-                    }
-                } catch (ignored: IllegalStateException) {
-                    // BT Adapter is not turned ON
-                }
+        handler.post {
+            try {
+                bluetoothLeAdvertiser!!.stopAdvertising(advertiseCallback)
+            } catch (ignored: IllegalStateException) {
+                // BT Adapter is not turned ON
             }
-        })
+            try {
+                if (gattServer != null) {
+                    val devices: Set<BluetoothDevice> = devices
+                    for (device in devices) {
+                        gattServer!!.cancelConnection(device)
+                    }
+                    gattServer!!.close()
+                    gattServer = null
+                }
+            } catch (ignored: IllegalStateException) {
+                // BT Adapter is not turned ON
+            }
+        }
     }
-
-    private val advertiseCallback: AdvertiseCallback = NullAdvertiseCallback()
-
-    private class NullAdvertiseCallback : AdvertiseCallback()
 
     private val devices: Set<BluetoothDevice>
         get() {
@@ -261,6 +270,29 @@ abstract class HidPeripheral protected constructor(
             synchronized(bluetoothDevicesMap) { deviceSet.addAll(bluetoothDevicesMap.values) }
             return Collections.unmodifiableSet(deviceSet)
         }
+
+
+    private fun onConnectionUpdate(device: BluetoothDevice, status: Int, newState: Int) {
+        Log.d(TAG, "connectionStateCallback: $device, $status, $newState")
+    }
+
+    private val advertiseCallback: AdvertiseCallback = object : AdvertiseCallback() {
+        override fun onStartFailure(errorCode: Int) {
+            super.onStartFailure(errorCode)
+            Log.d(
+                TAG,
+                "onStartFailure errorCode: $errorCode"
+            )
+        }
+
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            super.onStartSuccess(settingsInEffect)
+            Log.d(
+                TAG,
+                "onStartSuccess settingsInEffect: $settingsInEffect"
+            )
+        }
+    }
 
     private val gattServerCallback: BluetoothGattServerCallback =
         object : BluetoothGattServerCallback() {
@@ -270,13 +302,8 @@ abstract class HidPeripheral protected constructor(
                 newState: Int
             ) {
                 super.onConnectionStateChange(device, status, newState)
-                Log.d(
-                    TAG,
-                    "onConnectionStateChange status: $status, newState: $newState"
-                )
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        // check bond status
                         Log.d(
                             TAG,
                             "BluetoothProfile.STATE_CONNECTED bondState: " + device.bondState
@@ -285,21 +312,12 @@ abstract class HidPeripheral protected constructor(
                             applicationContext.registerReceiver(object : BroadcastReceiver() {
                                 override fun onReceive(context: Context, intent: Intent) {
                                     val action = intent.action
-                                    Log.d(
-                                        TAG,
-                                        "onReceive action: $action"
-                                    )
                                     if (BluetoothDevice.ACTION_BOND_STATE_CHANGED == action) {
                                         val state = intent.getIntExtra(
                                             BluetoothDevice.EXTRA_BOND_STATE,
                                             BluetoothDevice.ERROR
                                         )
                                         if (state == BluetoothDevice.BOND_BONDED) {
-                                            val bondedDevice =
-                                                intent.getParcelableExtra<BluetoothDevice>(
-                                                    BluetoothDevice.EXTRA_DEVICE
-                                                )
-
                                             // successfully bonded
                                             context.unregisterReceiver(this)
                                             handler.post {
@@ -307,12 +325,10 @@ abstract class HidPeripheral protected constructor(
                                                     gattServer!!.connect(device, true)
                                                 }
                                             }
-                                            Log.d(TAG, "successfully bonded")
                                         }
                                     }
                                 }
                             }, IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED))
-
                             // create bond
                             try {
                                 device.setPairingConfirmation(true)
@@ -333,7 +349,7 @@ abstract class HidPeripheral protected constructor(
                                 )
                             }
                         }
-                        connectionStateCallback.accept(ConnectionState(device, status, newState))
+                        onConnectionUpdate(device, status, newState)
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
@@ -347,7 +363,7 @@ abstract class HidPeripheral protected constructor(
                             }
                         }
                         synchronized(bluetoothDevicesMap) { bluetoothDevicesMap.remove(deviceAddress) }
-                        connectionStateCallback.accept(ConnectionState(device, status, newState))
+                        onConnectionUpdate(device, status, newState)
                     }
 
                     else -> {}
@@ -371,16 +387,16 @@ abstract class HidPeripheral protected constructor(
                 handler.post(object : Runnable {
                     override fun run() {
                         val characteristicUuid = characteristic.uuid
-                        if (BleUtils.matches(CHARACTERISTIC_HID_INFORMATION, characteristicUuid)) {
+                        if (BleUtils.matches(characteristicHidInformation, characteristicUuid)) {
                             gattServer!!.sendResponse(
                                 device,
                                 requestId,
                                 BluetoothGatt.GATT_SUCCESS,
                                 0,
-                                RESPONSE_HID_INFORMATION
+                                responseHidInformation
                             )
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_REPORT_MAP,
+                                characteristicReportMap,
                                 characteristicUuid
                             )
                         ) {
@@ -412,7 +428,7 @@ abstract class HidPeripheral protected constructor(
                                 }
                             }
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_HID_CONTROL_POINT,
+                                characteristicHidControlPoint,
                                 characteristicUuid
                             )
                         ) {
@@ -423,16 +439,16 @@ abstract class HidPeripheral protected constructor(
                                 0,
                                 byteArrayOf(0)
                             )
-                        } else if (BleUtils.matches(CHARACTERISTIC_REPORT, characteristicUuid)) {
+                        } else if (BleUtils.matches(characteristicReport, characteristicUuid)) {
                             gattServer!!.sendResponse(
                                 device,
                                 requestId,
                                 BluetoothGatt.GATT_SUCCESS,
                                 0,
-                                EMPTY_BYTES
+                                emptyBytes
                             )
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_MANUFACTURER_NAME,
+                                characteristicManufacturerName,
                                 characteristicUuid
                             )
                         ) {
@@ -446,7 +462,7 @@ abstract class HidPeripheral protected constructor(
                                 )
                             )
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_SERIAL_NUMBER,
+                                characteristicSerialNumber,
                                 characteristicUuid
                             )
                         ) {
@@ -460,7 +476,7 @@ abstract class HidPeripheral protected constructor(
                                 )
                             )
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_MODEL_NUMBER,
+                                characteristicModelNumber,
                                 characteristicUuid
                             )
                         ) {
@@ -474,7 +490,7 @@ abstract class HidPeripheral protected constructor(
                                 )
                             )
                         } else if (BleUtils.matches(
-                                CHARACTERISTIC_BATTERY_LEVEL,
+                                characteristicBatteryLevel,
                                 characteristicUuid
                             )
                         ) {
@@ -514,7 +530,7 @@ abstract class HidPeripheral protected constructor(
                 }
                 handler.post {
                     if (BleUtils.matches(
-                            DESCRIPTOR_REPORT_REFERENCE,
+                            descriptorReportReference,
                             descriptor.uuid
                         )
                     ) {
@@ -552,7 +568,7 @@ abstract class HidPeripheral protected constructor(
                                 requestId,
                                 BluetoothGatt.GATT_FAILURE,
                                 0,
-                                EMPTY_BYTES
+                                emptyBytes
                             )
                         }
                     }
@@ -587,7 +603,7 @@ abstract class HidPeripheral protected constructor(
                     return
                 }
                 if (responseNeeded) {
-                    if (BleUtils.matches(CHARACTERISTIC_REPORT, characteristic.uuid)) {
+                    if (BleUtils.matches(characteristicReport, characteristic.uuid)) {
                         if (characteristic.properties == BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE || characteristic.properties == BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) {
                             // Output Report
                             onOutputReport(value)
@@ -598,7 +614,7 @@ abstract class HidPeripheral protected constructor(
                                 requestId,
                                 BluetoothGatt.GATT_SUCCESS,
                                 0,
-                                EMPTY_BYTES
+                                emptyBytes
                             )
                         } else {
                             // send empty
@@ -607,7 +623,7 @@ abstract class HidPeripheral protected constructor(
                                 requestId,
                                 BluetoothGatt.GATT_SUCCESS,
                                 0,
-                                EMPTY_BYTES
+                                emptyBytes
                             )
                         }
                     }
@@ -641,7 +657,7 @@ abstract class HidPeripheral protected constructor(
                 descriptor.value = value
                 if (responseNeeded) {
                     if (BleUtils.matches(
-                            DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
+                            descriptorClientCharacteristicConfig,
                             descriptor.uuid
                         )
                     ) {
@@ -652,7 +668,7 @@ abstract class HidPeripheral protected constructor(
                                 requestId,
                                 BluetoothGatt.GATT_SUCCESS,
                                 0,
-                                EMPTY_BYTES
+                                emptyBytes
                             )
                         }
                     }
@@ -712,23 +728,21 @@ abstract class HidPeripheral protected constructor(
                 val polled = inputReportQueue.poll()
                 if (polled != null && inputReportCharacteristic != null) {
                     inputReportCharacteristic!!.value = polled
-                    handler.post(object : Runnable {
-                        override fun run() {
-                            val devices: Set<BluetoothDevice> = devices
-                            for (device in devices) {
-                                try {
-                                    if (gattServer != null) {
-                                        gattServer!!.notifyCharacteristicChanged(
-                                            device,
-                                            inputReportCharacteristic,
-                                            false
-                                        )
-                                    }
-                                } catch (ignored: Throwable) {
+                    handler.post {
+                        val devices: Set<BluetoothDevice> = devices
+                        for (device in devices) {
+                            try {
+                                if (gattServer != null) {
+                                    gattServer!!.notifyCharacteristicChanged(
+                                        device,
+                                        inputReportCharacteristic,
+                                        false
+                                    )
                                 }
+                            } catch (ignored: Throwable) {
                             }
                         }
-                    })
+                    }
                 }
             }
         }, 0, dataSendingRate.toLong())
@@ -737,66 +751,72 @@ abstract class HidPeripheral protected constructor(
 
     private fun setUpDeviceInformationService(): BluetoothGattService {
         val service = BluetoothGattService(
-            SERVICE_DEVICE_INFORMATION,
+            serviceDeviceInfo,
             BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_MANUFACTURER_NAME,
+                characteristicManufacturerName,
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_MODEL_NUMBER,
+                characteristicModelNumber,
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
         run {
             val characteristic = BluetoothGattCharacteristic(
-                CHARACTERISTIC_SERIAL_NUMBER,
+                characteristicSerialNumber,
                 BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
             )
-            while (!service.addCharacteristic(characteristic));
+            while (!service.addCharacteristic(characteristic)){
+                Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+            }
         }
         return service
     }
 
     private fun setUpBatteryService(): BluetoothGattService {
         val service =
-            BluetoothGattService(SERVICE_BATTERY, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            BluetoothGattService(serviceBattery, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
         // Battery Level
         val characteristic = BluetoothGattCharacteristic(
-            CHARACTERISTIC_BATTERY_LEVEL,
+            characteristicBatteryLevel,
             BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED
         )
         val clientCharacteristicConfigurationDescriptor = BluetoothGattDescriptor(
-            DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
+            descriptorClientCharacteristicConfig,
             BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
         )
         clientCharacteristicConfigurationDescriptor.value =
             BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         characteristic.addDescriptor(clientCharacteristicConfigurationDescriptor)
-        while (!service.addCharacteristic(characteristic));
+        while (!service.addCharacteristic(characteristic)){
+            Log.e(TAG, "Adding Char: ${characteristic.uuid}")
+        }
         return service
     }
-
-
 
     fun setDeviceName(newDeviceName: String) {
         // length check
         val deviceNameBytes = newDeviceName.toByteArray(StandardCharsets.UTF_8)
-        deviceName = if (deviceNameBytes.size > DEVICE_INFO_MAX_LENGTH) {
+        deviceName = if (deviceNameBytes.size > deviceInfoMaxLength) {
             // shorten
-            val bytes = ByteArray(DEVICE_INFO_MAX_LENGTH)
-            System.arraycopy(deviceNameBytes, 0, bytes, 0, DEVICE_INFO_MAX_LENGTH)
+            val bytes = ByteArray(deviceInfoMaxLength)
+            System.arraycopy(deviceNameBytes, 0, bytes, 0, deviceInfoMaxLength)
             String(bytes, StandardCharsets.UTF_8)
         } else {
             newDeviceName
@@ -806,10 +826,10 @@ abstract class HidPeripheral protected constructor(
     fun setSerialNumber(newSerialNumber: String) {
         // length check
         val deviceNameBytes = newSerialNumber.toByteArray(StandardCharsets.UTF_8)
-        serialNumber = if (deviceNameBytes.size > DEVICE_INFO_MAX_LENGTH) {
+        serialNumber = if (deviceNameBytes.size > deviceInfoMaxLength) {
             // shorten
-            val bytes = ByteArray(DEVICE_INFO_MAX_LENGTH)
-            System.arraycopy(deviceNameBytes, 0, bytes, 0, DEVICE_INFO_MAX_LENGTH)
+            val bytes = ByteArray(deviceInfoMaxLength)
+            System.arraycopy(deviceNameBytes, 0, bytes, 0, deviceInfoMaxLength)
             String(bytes, StandardCharsets.UTF_8)
         } else {
             newSerialNumber
@@ -819,107 +839,14 @@ abstract class HidPeripheral protected constructor(
     fun setManufacturer(newManufacturer: String) {
         // length check
         val manufacturerBytes = newManufacturer.toByteArray(StandardCharsets.UTF_8)
-        manufacturer = if (manufacturerBytes.size > DEVICE_INFO_MAX_LENGTH) {
+        manufacturer = if (manufacturerBytes.size > deviceInfoMaxLength) {
             // shorten
-            val bytes = ByteArray(DEVICE_INFO_MAX_LENGTH)
-            System.arraycopy(manufacturerBytes, 0, bytes, 0, DEVICE_INFO_MAX_LENGTH)
+            val bytes = ByteArray(deviceInfoMaxLength)
+            System.arraycopy(manufacturerBytes, 0, bytes, 0, deviceInfoMaxLength)
             String(bytes, StandardCharsets.UTF_8)
         } else {
             newManufacturer
         }
     }
 
-    companion object {
-        private val TAG = HidPeripheral::class.java.simpleName
-        fun INPUT(size: Int): Byte {
-            return (0x80 or size).toByte()
-        }
-
-        fun COLLECTION(size: Int): Byte {
-            return (0xA0 or size).toByte()
-        }
-
-        fun END_COLLECTION(size: Int): Byte {
-            return (0xC0 or size).toByte()
-        }
-
-        fun USAGE_PAGE(size: Int): Byte {
-            return (0x04 or size).toByte()
-        }
-
-        fun LOGICAL_MINIMUM(size: Int): Byte {
-            return (0x14 or size).toByte()
-        }
-
-        fun LOGICAL_MAXIMUM(size: Int): Byte {
-            return (0x24 or size).toByte()
-        }
-
-        fun REPORT_SIZE(size: Int): Byte {
-            return (0x74 or size).toByte()
-        }
-
-        fun REPORT_COUNT(size: Int): Byte {
-            return (0x94 or size).toByte()
-        }
-
-        fun USAGE(size: Int): Byte {
-            return (0x08 or size).toByte()
-        }
-
-        fun USAGE_MINIMUM(size: Int): Byte {
-            return (0x18 or size).toByte()
-        }
-
-        fun USAGE_MAXIMUM(size: Int): Byte {
-            return (0x28 or size).toByte()
-        }
-
-//        fun REPORT_ID(size: Int): Byte {
-//            return (0x84 or size).toByte()
-//        }
-//        fun LSB(value: Int): Byte {
-//            return (value and 0xff).toByte()
-//        }
-//        fun MSB(value: Int): Byte {
-//            return (value shr 8 and 0xff).toByte()
-//        }
-//        fun PHYSICAL_MINIMUM(size: Int): Byte {
-//            return (0x34 or size).toByte()
-//        }
-//        fun PHYSICAL_MAXIMUM(size: Int): Byte {
-//            return (0x44 or size).toByte()
-//        }
-//        fun UNIT_EXPONENT(size: Int): Byte {
-//            return (0x54 or size).toByte()
-//        }
-//        fun FEATURE(size: Int): Byte {
-//            return (0xB0 or size).toByte()
-//        }
-//        fun OUTPUT(size: Int): Byte {
-//            return (0x90 or size).toByte()
-//        }
-//        fun UNIT(size: Int): Byte {
-//            return (0x64 or size).toByte()
-//        }
-
-        private val SERVICE_DEVICE_INFORMATION = BleUtils.fromShortValue(0x180A)
-        private val CHARACTERISTIC_MANUFACTURER_NAME = BleUtils.fromShortValue(0x2A29)
-        private val CHARACTERISTIC_MODEL_NUMBER = BleUtils.fromShortValue(0x2A24)
-        private val CHARACTERISTIC_SERIAL_NUMBER = BleUtils.fromShortValue(0x2A25)
-        private const val DEVICE_INFO_MAX_LENGTH = 20
-        private val SERVICE_BATTERY = BleUtils.fromShortValue(0x180F)
-        private val CHARACTERISTIC_BATTERY_LEVEL = BleUtils.fromShortValue(0x2A19)
-        private val SERVICE_BLE_HID = BleUtils.fromShortValue(0x1812)
-        private val CHARACTERISTIC_HID_INFORMATION = BleUtils.fromShortValue(0x2A4A)
-        private val CHARACTERISTIC_REPORT_MAP = BleUtils.fromShortValue(0x2A4B)
-        private val CHARACTERISTIC_HID_CONTROL_POINT = BleUtils.fromShortValue(0x2A4C)
-        private val CHARACTERISTIC_REPORT = BleUtils.fromShortValue(0x2A4D)
-        private val CHARACTERISTIC_PROTOCOL_MODE = BleUtils.fromShortValue(0x2A4E)
-        private val DESCRIPTOR_REPORT_REFERENCE = BleUtils.fromShortValue(0x2908)
-        private val DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION = BleUtils.fromShortValue(0x2902)
-        private val EMPTY_BYTES = byteArrayOf()
-        private val RESPONSE_HID_INFORMATION = byteArrayOf(0x11, 0x01, 0x00, 0x03)
-
-    }
 }
