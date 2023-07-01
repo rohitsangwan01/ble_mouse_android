@@ -22,28 +22,11 @@ class MouseActivity : AppCompatActivity() {
         setContentView(R.layout.activity_mouse)
         title = "Mouse"
 
-        if (!BleUtils.isBluetoothEnabled(this)) {
-            BleUtils.enableBluetooth(this)
-            return
-        }
-        if (!BleUtils.isBleSupported(this) || !BleUtils.isBlePeripheralSupported(this)) {
-            val alertDialog = AlertDialog.Builder(this).create()
-            alertDialog.setTitle("Not Supported")
-            alertDialog.setMessage("not supported")
-            alertDialog.setButton(
-                AlertDialog.BUTTON_NEUTRAL, "ok"
-            ) { dialog, _ -> dialog.dismiss() }
-            alertDialog.setOnDismissListener { finish() }
-            alertDialog.show()
-        } else {
-            setupBlePeripheralProvider()
-        }
+        setupBlePeripheralProvider()
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
-        if (event != null) {
-            onTouch(event)
-        }
+        event?.let { onTouch(it) }
         return super.onTouchEvent(event)
     }
 

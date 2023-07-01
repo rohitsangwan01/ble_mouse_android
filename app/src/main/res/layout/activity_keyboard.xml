@@ -5,25 +5,19 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="10dp"
-    tools:context=".MainActivity">
+    tools:context=".KeyboardActivity">
 
-    <Button
-        android:id="@+id/btnPermission"
+    <EditText
+        android:id="@+id/editText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Verify Permission" />
+        android:ems="10"
+        android:inputType="text"
+        android:text="Enter Text" />
 
     <Button
-        android:id="@+id/btnMouse"
+        android:id="@+id/btnSend"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Mouse" />
-
-    <Button
-        android:id="@+id/btnKeyboard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Keyboard" />
-
+        android:text="Send" />
 </LinearLayout>
