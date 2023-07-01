@@ -47,6 +47,7 @@ abstract class HidPeripheral protected constructor(
     private var serialNumber = "12345678"
     protected abstract val reportMap: ByteArray
     protected abstract fun onOutputReport(outputReport: ByteArray?)
+    private var dataSendingTimer: Timer? = null
     private lateinit var applicationContext: Context
     private lateinit var handler: Handler
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
@@ -76,9 +77,21 @@ abstract class HidPeripheral protected constructor(
     protected fun addInputReport(inputReport: ByteArray?) {
         if (inputReport != null && inputReport.isNotEmpty()) {
             inputReportQueue.offer(inputReport)
+//            inputReportCharacteristic?.value = inputReport
+//            handler.post {
+//                for (device in devices) {
+//                    try {
+//                        gattServer?.notifyCharacteristicChanged(
+//                            device,
+//                            inputReportCharacteristic,
+//                            false
+//                        )
+//                    } catch (ignored: Throwable) {
+//                    }
+//                }
+//            }
         }
     }
-
 
     private fun addService(service: BluetoothGattService?) {
         assert(gattServer != null)
@@ -273,7 +286,6 @@ abstract class HidPeripheral protected constructor(
             return Collections.unmodifiableSet(deviceSet)
         }
 
-
     private fun onConnectionUpdate(device: BluetoothDevice, status: Int, newState: Int) {
         onConnectionStateChanged?.invoke(device, status, newState)
     }
@@ -373,141 +385,137 @@ abstract class HidPeripheral protected constructor(
                 characteristic: BluetoothGattCharacteristic
             ) {
                 super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-                if (gattServer == null) {
-                    return
-                }
+                if (gattServer == null) return
                 Log.d(
                     TAG,
                     "onCharacteristicReadRequest characteristic: " + characteristic.uuid + ", offset: " + offset
                 )
-                handler.post(object : Runnable {
-                    override fun run() {
-                        val characteristicUuid = characteristic.uuid
-                        if (BleUtils.matches(characteristicHidInformation, characteristicUuid)) {
+                handler.post {
+                    val characteristicUuid = characteristic.uuid
+                    if (BleUtils.matches(characteristicHidInformation, characteristicUuid)) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            responseHidInformation
+                        )
+                    } else if (BleUtils.matches(
+                            characteristicReportMap,
+                            characteristicUuid
+                        )
+                    ) {
+                        if (offset == 0) {
                             gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                responseHidInformation
+                                device, requestId, BluetoothGatt.GATT_SUCCESS, 0,
+                                reportMap
                             )
-                        } else if (BleUtils.matches(
-                                characteristicReportMap,
-                                characteristicUuid
-                            )
-                        ) {
-                            if (offset == 0) {
+                        } else {
+                            val remainLength: Int = reportMap.size - offset
+                            if (remainLength > 0) {
+                                val data = ByteArray(remainLength)
+                                System.arraycopy(reportMap, offset, data, 0, remainLength)
                                 gattServer!!.sendResponse(
-                                    device, requestId, BluetoothGatt.GATT_SUCCESS, 0,
-                                    reportMap
+                                    device,
+                                    requestId,
+                                    BluetoothGatt.GATT_SUCCESS,
+                                    offset,
+                                    data
                                 )
                             } else {
-                                val remainLength: Int = reportMap.size - offset
-                                if (remainLength > 0) {
-                                    val data = ByteArray(remainLength)
-                                    System.arraycopy(reportMap, offset, data, 0, remainLength)
-                                    gattServer!!.sendResponse(
-                                        device,
-                                        requestId,
-                                        BluetoothGatt.GATT_SUCCESS,
-                                        offset,
-                                        data
-                                    )
-                                } else {
-                                    gattServer!!.sendResponse(
-                                        device,
-                                        requestId,
-                                        BluetoothGatt.GATT_SUCCESS,
-                                        offset,
-                                        null
-                                    )
-                                }
+                                gattServer!!.sendResponse(
+                                    device,
+                                    requestId,
+                                    BluetoothGatt.GATT_SUCCESS,
+                                    offset,
+                                    null
+                                )
                             }
-                        } else if (BleUtils.matches(
-                                characteristicHidControlPoint,
-                                characteristicUuid
-                            )
-                        ) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                byteArrayOf(0)
-                            )
-                        } else if (BleUtils.matches(characteristicReport, characteristicUuid)) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                emptyBytes
-                            )
-                        } else if (BleUtils.matches(
-                                characteristicManufacturerName,
-                                characteristicUuid
-                            )
-                        ) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                manufacturer.toByteArray(
-                                    StandardCharsets.UTF_8
-                                )
-                            )
-                        } else if (BleUtils.matches(
-                                characteristicSerialNumber,
-                                characteristicUuid
-                            )
-                        ) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                serialNumber.toByteArray(
-                                    StandardCharsets.UTF_8
-                                )
-                            )
-                        } else if (BleUtils.matches(
-                                characteristicModelNumber,
-                                characteristicUuid
-                            )
-                        ) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                deviceName.toByteArray(
-                                    StandardCharsets.UTF_8
-                                )
-                            )
-                        } else if (BleUtils.matches(
-                                characteristicBatteryLevel,
-                                characteristicUuid
-                            )
-                        ) {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                byteArrayOf(0x64)
-                            ) // always 100%
-                        } else {
-                            gattServer!!.sendResponse(
-                                device,
-                                requestId,
-                                BluetoothGatt.GATT_SUCCESS,
-                                0,
-                                characteristic.value
-                            )
                         }
+                    } else if (BleUtils.matches(
+                            characteristicHidControlPoint,
+                            characteristicUuid
+                        )
+                    ) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            byteArrayOf(0)
+                        )
+                    } else if (BleUtils.matches(characteristicReport, characteristicUuid)) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            emptyBytes
+                        )
+                    } else if (BleUtils.matches(
+                            characteristicManufacturerName,
+                            characteristicUuid
+                        )
+                    ) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            manufacturer.toByteArray(
+                                StandardCharsets.UTF_8
+                            )
+                        )
+                    } else if (BleUtils.matches(
+                            characteristicSerialNumber,
+                            characteristicUuid
+                        )
+                    ) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            serialNumber.toByteArray(
+                                StandardCharsets.UTF_8
+                            )
+                        )
+                    } else if (BleUtils.matches(
+                            characteristicModelNumber,
+                            characteristicUuid
+                        )
+                    ) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            deviceName.toByteArray(
+                                StandardCharsets.UTF_8
+                            )
+                        )
+                    } else if (BleUtils.matches(
+                            characteristicBatteryLevel,
+                            characteristicUuid
+                        )
+                    ) {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            byteArrayOf(0x64)
+                        ) // always 100%
+                    } else {
+                        gattServer!!.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_SUCCESS,
+                            0,
+                            characteristic.value
+                        )
                     }
-                })
+                }
             }
 
             override fun onDescriptorReadRequest(
@@ -525,11 +533,7 @@ abstract class HidPeripheral protected constructor(
                     return
                 }
                 handler.post {
-                    if (BleUtils.matches(
-                            descriptorReportReference,
-                            descriptor.uuid
-                        )
-                    ) {
+                    if (BleUtils.matches(descriptorReportReference, descriptor.uuid)) {
                         val characteristicProperties = descriptor.characteristic.properties
                         if (characteristicProperties == BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY) {
                             // Input Report
@@ -683,6 +687,7 @@ abstract class HidPeripheral protected constructor(
             }
         }
 
+
     init {
         applicationContext = context.applicationContext
         handler = Handler(applicationContext.mainLooper)
@@ -690,28 +695,20 @@ abstract class HidPeripheral protected constructor(
             applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val bluetoothAdapter = bluetoothManager.adapter
             ?: throw UnsupportedOperationException("Bluetooth is not available.")
-        if (!bluetoothAdapter.isEnabled) {
-            throw UnsupportedOperationException("Bluetooth is disabled.")
-        }
-        Log.d(
-            TAG,
-            "isMultipleAdvertisementSupported:" + bluetoothAdapter.isMultipleAdvertisementSupported
+
+        if (!bluetoothAdapter.isEnabled) throw UnsupportedOperationException("Bluetooth is disabled.")
+
+        if (!bluetoothAdapter.isMultipleAdvertisementSupported) throw UnsupportedOperationException(
+            "Bluetooth LE Advertising not supported on this device."
         )
-        if (!bluetoothAdapter.isMultipleAdvertisementSupported) {
-            throw UnsupportedOperationException("Bluetooth LE Advertising not supported on this device.")
-        }
+
         bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
-        Log.d(
-            TAG,
-            "bluetoothLeAdvertiser: $bluetoothLeAdvertiser"
-        )
-        if (bluetoothLeAdvertiser == null) {
-            throw UnsupportedOperationException("Bluetooth LE Advertising not supported on this device.")
-        }
+
+        if (bluetoothLeAdvertiser == null) throw UnsupportedOperationException("Bluetooth LE Advertising not supported on this device.")
+
         gattServer = bluetoothManager.openGattServer(applicationContext, gattServerCallback)
-        if (gattServer == null) {
-            throw UnsupportedOperationException("gattServer is null, check Bluetooth is ON.")
-        }
+        if (gattServer == null) throw UnsupportedOperationException("gattServer is null, check Bluetooth is ON.")
+
 
         // setup services
         servicesToAdd.add(setUpHidService(needInputReport, needOutputReport, needFeatureReport))
@@ -719,22 +716,24 @@ abstract class HidPeripheral protected constructor(
         addService(setUpBatteryService())
 
         // send report each dataSendingRate, if data available
-        Timer().scheduleAtFixedRate(object : TimerTask() {
+        startDataSendingTimer(dataSendingRate)
+    }
+
+    private fun startDataSendingTimer(dataSendingRate: Int) {
+        dataSendingTimer = Timer()
+        dataSendingTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 val polled = inputReportQueue.poll()
                 if (polled != null && inputReportCharacteristic != null) {
-                    inputReportCharacteristic!!.value = polled
+                    inputReportCharacteristic?.value = polled
                     handler.post {
-                        val devices: Set<BluetoothDevice> = devices
                         for (device in devices) {
                             try {
-                                if (gattServer != null) {
-                                    gattServer!!.notifyCharacteristicChanged(
-                                        device,
-                                        inputReportCharacteristic,
-                                        false
-                                    )
-                                }
+                                gattServer?.notifyCharacteristicChanged(
+                                    device,
+                                    inputReportCharacteristic,
+                                    false
+                                )
                             } catch (ignored: Throwable) {
                             }
                         }
@@ -744,6 +743,11 @@ abstract class HidPeripheral protected constructor(
         }, 0, dataSendingRate.toLong())
     }
 
+    fun dispose() {
+        gattServer?.close()
+        dataSendingTimer?.cancel()
+        dataSendingTimer = null
+    }
 
     private fun setUpDeviceInformationService(): BluetoothGattService {
         val service = BluetoothGattService(
@@ -786,8 +790,6 @@ abstract class HidPeripheral protected constructor(
     private fun setUpBatteryService(): BluetoothGattService {
         val service =
             BluetoothGattService(serviceBattery, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-
-        // Battery Level
         val characteristic = BluetoothGattCharacteristic(
             characteristicBatteryLevel,
             BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
@@ -844,5 +846,4 @@ abstract class HidPeripheral protected constructor(
             newManufacturer
         }
     }
-
 }

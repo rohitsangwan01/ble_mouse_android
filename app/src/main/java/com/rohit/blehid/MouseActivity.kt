@@ -142,9 +142,8 @@ class MouseActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (mouse != null) {
-            mouse?.stopAdvertising()
-        }
+        mouse?.stopAdvertising()
+        mouse?.dispose()
     }
 
 }
